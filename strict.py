@@ -13,7 +13,17 @@ def get_target_name():
             continue
         return target_name
 
-# The awesome hack from https://stackoverflow.com/a/24498525/5223757
+def replace_globals_in_frames(old, new):
+    for depth in itertools.count():
+        try:
+            frame = sys._getframe(depth)
+        except ValueError:
+            return
+        if frame.f_globals is old:
+            magic_get_dict(frame)['f_globals'] = new
+
+# The awesome hack from https://stackoverflow.com/a/24498525/5223757,
+# modified slightly to include magic_set_dict
 def magic_get_dict(o):
     # find address of dict whose offset is stored in the type
     dict_addr = id(o) + type(o).__dictoffset__
@@ -21,6 +31,21 @@ def magic_get_dict(o):
     # retrieve the dict object itself
     dict_ptr = ctypes.cast(dict_addr, ctypes.POINTER(ctypes.py_object))
     return dict_ptr.contents.value
+
+def magic_set_dict(o, d):
+    # find address of dict whose offset is stored in the type
+    dict_addr = id(o) + type(o).__dictoffset__
+
+    # retrieve the dict object itself
+    old_dict_ptr = ctypes.cast(dict_addr, ctypes.POINTER(ctypes.py_object))
+
+    # decrement refcount of original dict object
+    ctypes.pythonapi.Py_DecRef(old_dict_ptr.contents)
+    # and increment refcount of new dict object
+    ctypes.pythonapi.Py_IncRef(ctypes.py_object(d))
+
+    # overwrite pointer value
+    ctypes.c_void_p.from_address(dict_addr).value = id(d)
 
 def magic_flush_mro_cache():
     ctypes.PyDLL(None).PyType_Modified(ctypes.py_object(object))
@@ -82,6 +107,17 @@ class FunctionDescriptor:
 # Setup #
 #########
 if __name__ == "strict":
+    # Get target module
     target_name = get_target_name()
     target = sys.modules[target_name]
-    print(magic_get_dict(target))
+
+    # Create new globals
+    old_vars = vars(target)
+    new_vars = ModuleGlobals(module=target)
+    new_vars.update(old_vars)
+
+    # Set new globals in modules object
+    magic_set_dict(target, new_vars)
+
+    # Set new globals in frames
+    replace_globals_in_frames(old_vars, new_vars)
