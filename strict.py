@@ -20,7 +20,32 @@ def replace_globals_in_frames(old, new):
         except ValueError:
             return
         if frame.f_globals is old:
-            magic_get_dict(frame)['f_globals'] = new
+            print(depth)
+            for offset in range(0, frame.__sizeof__(),
+                                ctypes.sizeof(ctypes.c_void_p)):
+                # This assumes alignment of the pointers.
+                # WARNING: May cause segfault. If it doesn't,
+                # you're really lucky!
+                address = id(frame) + offset
+                if ctypes.c_void_p.from_address(address).value == id(old):
+                    magic_set_pointer(address, old)
+                    # Don't break; frame.f_locals might also be
+                    # set to this, and I don't know which is which.
+                    # This will probably not cause too many problems.
+                    print(address, frame.f_globals.__class__, frame.f_locals.__class__)
+                
+
+def magic_set_pointer(address, new_obj):
+    # retrieve the original object
+    old_pyobj = ctypes.cast(address, ctypes.POINTER(ctypes.py_object)).contents
+    
+    # decrement refcount of original object
+    ctypes.pythonapi.Py_DecRef(old_pyobj)
+    # and increment refcount of new object
+    ctypes.pythonapi.Py_IncRef(ctypes.py_object(new_obj))
+
+    # overwrite pointer value
+    ctypes.c_void_p.from_address(address).value = id(new_obj)
 
 # The awesome hack from https://stackoverflow.com/a/24498525/5223757,
 # modified slightly to include magic_set_dict
@@ -36,16 +61,7 @@ def magic_set_dict(o, d):
     # find address of dict whose offset is stored in the type
     dict_addr = id(o) + type(o).__dictoffset__
 
-    # retrieve the dict object itself
-    old_dict_ptr = ctypes.cast(dict_addr, ctypes.POINTER(ctypes.py_object))
-
-    # decrement refcount of original dict object
-    ctypes.pythonapi.Py_DecRef(old_dict_ptr.contents)
-    # and increment refcount of new dict object
-    ctypes.pythonapi.Py_IncRef(ctypes.py_object(d))
-
-    # overwrite pointer value
-    ctypes.c_void_p.from_address(dict_addr).value = id(d)
+    magic_set_pointer(dict_addr, d)
 
 def magic_flush_mro_cache():
     ctypes.PyDLL(None).PyType_Modified(ctypes.py_object(object))
