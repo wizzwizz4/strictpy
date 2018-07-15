@@ -20,7 +20,6 @@ def replace_globals_in_frames(old, new):
         except ValueError:
             return
         if frame.f_globals is old:
-            print(depth)
             for offset in range(0, frame.__sizeof__(),
                                 ctypes.sizeof(ctypes.c_void_p)):
                 # This assumes alignment of the pointers.
@@ -28,12 +27,10 @@ def replace_globals_in_frames(old, new):
                 # you're really lucky!
                 address = id(frame) + offset
                 if ctypes.c_void_p.from_address(address).value == id(old):
-                    magic_set_pointer(address, old)
+                    magic_set_pointer(address, new)
                     # Don't break; frame.f_locals might also be
                     # set to this, and I don't know which is which.
                     # This will probably not cause too many problems.
-                    print(address, frame.f_globals.__class__, frame.f_locals.__class__)
-                
 
 def magic_set_pointer(address, new_obj):
     # retrieve the original object
@@ -81,6 +78,12 @@ class DescriptorGlobals(dict):
         return item
 
     def __setitem__(self, key, value):
+        if key == "strict":
+            if "strict" in sys.modules:
+                strict = sys.modules["strict"]
+                del sys.modules["strict"]
+                if value is strict:
+                    return
         try:
             item = super().__getitem__(key)  # Don't run __get__
         except KeyError:
@@ -89,9 +92,10 @@ class DescriptorGlobals(dict):
                 super().__setitem__(key, value)
                 value.__set_name__(self.module, name)
                 return
-        if hasattr(item, '__set__'):
-            item.__set__(self.module, value)
-            return
+        else:
+            if hasattr(item, '__set__'):
+                item.__set__(self.module, value)
+                return
         # Replace the not-descriptor
         # Make sure you check the type against __annotations__!
         super().__setitem__(key, value)
