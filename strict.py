@@ -9,7 +9,12 @@ import types
 def get_target_name():
     for depth in itertools.count(2):
         target_name = sys._getframe(depth).f_globals["__name__"]
-        if target_name[:20] == "importlib._bootstrap":
+        if "importlib" in target_name:
+            # Please nobody game this you will only have yourself to blame
+            # when your program fails because you decided to call it
+            # my_awesome_module_written_in_python_with_loads_of_features_\
+            # like_importing_other_modules_with_importlib_and_making_programs_\
+            # that_work_properly_but_it_doesnt_really
             continue
         return target_name
 
@@ -22,7 +27,6 @@ def reclass_object(obj, new_class):
         # you're really lucky!
         address = id(obj) + offset
         if ctypes.c_void_p.from_address(address).value == id(old_class):
-            print(address)
             magic_set_pointer(address, new_class)
             # Don't break; I don't know how many references there might be!
             # This will probably not cause too many problems.
