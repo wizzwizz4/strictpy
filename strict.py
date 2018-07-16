@@ -41,10 +41,20 @@ def magic_set_pointer(address, new_obj):
     ctypes.c_void_p.from_address(address).value = id(new_obj)
 
 # The awesome hack from https://stackoverflow.com/a/24498525/5223757,
-# modified slightly to include magic_set_dict
+# modified slightly to include magic_set_dict and to make more safe
+def magic_get_dict_address(o):
+    """Safely get the address of the dictionary!
+    
+    See documentation for PyTypeObject.tp_dictoffset for details."""
+    address = ctypes.pythonapi._PyObject_GetDictPtr(ctypes.py_object(o))
+    if address == 0:
+        raise TypeError("Objects of type {} don't have a dictionary!"
+                        .format(type(o)))
+    return address
+
 def magic_get_dict(o):
     # find address of dict whose offset is stored in the type
-    dict_addr = id(o) + type(o).__dictoffset__
+    dict_addr = magic_get_dict_address(o)
 
     # retrieve the dict object itself
     dict_ptr = ctypes.cast(dict_addr, ctypes.POINTER(ctypes.py_object))
@@ -52,7 +62,7 @@ def magic_get_dict(o):
 
 def magic_set_dict(o, d):
     # find address of dict whose offset is stored in the type
-    dict_addr = id(o) + type(o).__dictoffset__
+    dict_addr = magic_get_dict_address(o)
 
     magic_set_pointer(dict_addr, d)
 
@@ -62,7 +72,7 @@ def magic_flush_mro_cache():
 ########################
 # Module globals stuff #
 ########################
-class DescriptorGlobals(dict):
+class ModuleGlobals(dict):
     __slots__ = ()
     def __new__(cls, *args, **kwargs):
         raise RuntimeError("This is magic; it shouldn't be instantiated!")
@@ -105,22 +115,7 @@ class DescriptorGlobals(dict):
             item.__delete__(module)
         super().__delitem__(key)
 
-class FunctionGlobals(DescriptorGlobals):
-    def __setitem__(self, key, value):
-        if isinstance(value, types.FunctionType):
-            # Check for __annotations__ etc., and error if not found.
-            value = FunctionDescriptor(value)
-        super().__setitem__(key, value)
-
-class ModuleGlobals(FunctionGlobals,):
-    pass  # Does nothing except be a subclass of all the features.
-
-###############
-# Descriptors #
-###############
-
-class FunctionDescriptor:
-    pass
+set_hooks = {}
 
 #########
 # Setup #
