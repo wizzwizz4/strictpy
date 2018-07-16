@@ -13,24 +13,20 @@ def get_target_name():
             continue
         return target_name
 
-def replace_globals_in_frames(old, new):
-    for depth in itertools.count():
-        try:
-            frame = sys._getframe(depth)
-        except ValueError:
-            return
-        if frame.f_globals is old:
-            for offset in range(0, frame.__sizeof__(),
-                                ctypes.sizeof(ctypes.c_void_p)):
-                # This assumes alignment of the pointers.
-                # WARNING: May cause segfault. If it doesn't,
-                # you're really lucky!
-                address = id(frame) + offset
-                if ctypes.c_void_p.from_address(address).value == id(old):
-                    magic_set_pointer(address, new)
-                    # Don't break; frame.f_locals might also be
-                    # set to this, and I don't know which is which.
-                    # This will probably not cause too many problems.
+def reclass_object(obj, new_class):
+    old_class = obj.__class__
+    for offset in range(0, obj.__sizeof__(),
+                        ctypes.sizeof(ctypes.c_void_p)):
+        # This assumes alignment of the pointers.
+        # WARNING: May cause segfault. If it doesn't,
+        # you're really lucky!
+        address = id(obj) + offset
+        if ctypes.c_void_p.from_address(address).value == id(old_class):
+            print(address)
+            magic_set_pointer(address, new_class)
+            # Don't break; I don't know how many references there might be!
+            # This will probably not cause too many problems.
+    assert obj.__class__ is new_class
 
 def magic_set_pointer(address, new_obj):
     # retrieve the original object
@@ -67,17 +63,19 @@ def magic_flush_mro_cache():
 # Module globals stuff #
 ########################
 class DescriptorGlobals(dict):
-    __slots__ = ('module',)
-    def __init__(self, *args, module, **kwargs):
-        self.module = module
+    __slots__ = ()
+    def __new__(cls, *args, **kwargs):
+        raise RuntimeError("This is magic; it shouldn't be instantiated!")
     
     def __getitem__(self, key):
+        module = sys.modules[super().__getitem__('__name__')]
         item = super().__getitem__(key)
         if hasattr(item, '__get__'):
-            return item.__get__(self.module, self.module)
+            return item.__get__(module, module)
         return item
 
     def __setitem__(self, key, value):
+        module = sys.modules[super().__getitem__('__name__')]
         if key == "strict":
             if "strict" in sys.modules:
                 strict = sys.modules["strict"]
@@ -90,20 +88,21 @@ class DescriptorGlobals(dict):
             # Set new descriptor?
             if hasattr(value, '__set_name__'):
                 super().__setitem__(key, value)
-                value.__set_name__(self.module, name)
+                value.__set_name__(module, name)
                 return
         else:
             if hasattr(item, '__set__'):
-                item.__set__(self.module, value)
+                item.__set__(module, value)
                 return
         # Replace the not-descriptor
         # Make sure you check the type against __annotations__!
         super().__setitem__(key, value)
 
     def __delitem__(self, key):
+        module = sys.modules[super().__getitem__('__name__')]
         item = super().__getitem__(key)
         if hasattr(item, 'delete'):
-            item.__delete__(self.module)
+            item.__delete__(module)
         super().__delitem__(key)
 
 class FunctionGlobals(DescriptorGlobals):
@@ -131,13 +130,5 @@ if __name__ == "strict":
     target_name = get_target_name()
     target = sys.modules[target_name]
 
-    # Create new globals
-    old_vars = vars(target)
-    new_vars = ModuleGlobals(module=target)
-    new_vars.update(old_vars)
-
-    # Set new globals in modules object
-    magic_set_dict(target, new_vars)
-
-    # Set new globals in frames
-    replace_globals_in_frames(old_vars, new_vars)
+    # Rewrite globals to be a ModuleGlobals subclass
+    reclass_object(target.__dict__, ModuleGlobals)
