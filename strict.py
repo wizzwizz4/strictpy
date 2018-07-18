@@ -2,6 +2,7 @@ import sys
 import itertools
 import ctypes
 import types
+import functools
 
 #####################
 # Utility functions #
@@ -90,20 +91,31 @@ class ModuleGlobals(dict):
 
     def __setitem__(self, key, value):
         module = sys.modules[super().__getitem__('__name__')]
+        # Stop import strict from actually importing strict.
+        # This also means that it can be run more than once, so long as the
+        # user didn't import strict as something else.
         if key == "strict":
             if "strict" in sys.modules:
                 strict = sys.modules["strict"]
-                del sys.modules["strict"]
                 if value is strict:
+                    del sys.modules["strict"]
                     return
         try:
             item = super().__getitem__(key)  # Don't run __get__
         except KeyError:
-            # Set new descriptor?
-            if hasattr(value, '__set_name__'):
-                super().__setitem__(key, value)
-                value.__set_name__(module, name)
-                return
+            # Run set hooks
+            for type_ in type(value).__mro__:
+                if type_ in set_hooks:
+                    processed = set_hooks[type_](value)
+                    if processed is not None:
+                        super().__setitem__(key, processed)
+                        return
+            else:
+                # Set new descriptor?
+                if hasattr(value, '__set_name__'):
+                    super().__setitem__(key, value)
+                    value.__set_name__(module, name)
+                    return
         else:
             if hasattr(item, '__set__'):
                 item.__set__(module, value)
@@ -121,6 +133,18 @@ class ModuleGlobals(dict):
 
 set_hooks = {}
 
+############
+# Features #
+############
+
+class FunctionDescriptor:
+    def __init__(self, f):
+        self.function = f
+
+    def __get__(self, instance, type_):
+        return self.function
+set_hooks[types.FunctionType] = FunctionDescriptor
+
 #########
 # Setup #
 #########
@@ -131,3 +155,11 @@ if __name__ == "strict":
 
     # Rewrite globals to be a ModuleGlobals subclass
     reclass_object(target.__dict__, ModuleGlobals)
+
+    # Retcon import strict
+    for key in target.__dict__:
+        # Run __setitem__ on everything
+        if key != '__name__':
+            value = dict.__getitem__(target.__dict__, key)
+            dict.__delitem__(target.__dict__, key)
+            target.__dict__[key] = value
