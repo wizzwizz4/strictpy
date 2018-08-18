@@ -5,6 +5,10 @@ import types
 import functools
 import enum
 import warnings
+import inspect
+import typing
+import textwrap
+import ast
 
 #####################
 # Utility functions #
@@ -100,7 +104,7 @@ class ModuleGlobals(dict):
         __strict__ = super().__getitem__('__strict__')
         item = super().__getitem__(key)
 
-        if key not in __strict__:
+        if key not in __strict__ or __strict__[key] & Attribute.UNOPTIMISABLE:
             # Lazy evaluation!
             warnings.warn("strict (type checking etc.) didn't run for {key} "
                           "when it was first set",
@@ -173,6 +177,19 @@ set_hooks = {}
 
 class FunctionDescriptor:
     def __init__(self, f):
+        if not all(name in f.__annotations__ for name in
+                   f.__code__.co_varnames + ("return",)):
+            raise ValueError("Your function needs annotations!")
+
+        # Create a copy of the function, preserving variable annotations
+        tree = ast.parse(textwrap.dedent(inspect.getsource(f))).body[0]
+
+        code = compile(self.get_body(f),
+                       f.__code__.co_filename,
+                       "exec",
+                       f.__code__.co_flags,
+                       True)
+
         self.function = f
         # TODO: Set prototype from f.__code__.co_varnames and __annotations__
 
@@ -186,7 +203,23 @@ class FunctionDescriptor:
         print("This is called!")
         self.name = name
 
-def function_hook(f):
+    @staticmethod
+    def get_body(f: types.FunctionType):
+        source_code = inspect.getsource(f)
+
+        index = source_code.index('(')
+        depth = 1
+        while depth:
+            index += 1
+            if source_code[index] == '(':
+                depth += 1
+            elif source_code[index] == ')':
+                depth -= 1
+        source_code = source_code[index+2:]  # ): is 2 chars.
+
+        return textwrap.dedent(source_code).strip('\n')
+
+def function_hook(f: int) -> (FunctionDescriptor, Attribute):
     try:
         module = sys.modules[f.__module__]
     except KeyError:
@@ -195,10 +228,7 @@ def function_hook(f):
     else:
         if not isinstance(module.__dict__, ModuleGlobals):
             return None
-    if all(name in f.__annotations__ for name in
-           f.__code__.co_varnames + ("return",)):
-        return FunctionDescriptor(f), Attribute.DESCRIPTOR
-    raise ValueError("Your function needs annotations!")
+    return FunctionDescriptor(f), Attribute.DESCRIPTOR
 
 set_hooks[types.FunctionType] = function_hook
 
@@ -206,6 +236,9 @@ set_hooks[types.FunctionType] = function_hook
 # Setup #
 #########
 if __name__ == "strict":
+    typing.TYPE_CHECKING = True  # Does nothing in and of itself...
+                                 # but it's a documented signal.
+
     # Get target module
     target_name = get_target_name()
     target = sys.modules[target_name]
