@@ -8,6 +8,7 @@ import typing
 from . import utils, singletons
 from .enums import Attribute
 from .functions import register as register_functions
+from .classes import register as register_classes
 
 ########################
 # Module globals stuff #
@@ -102,6 +103,7 @@ singletons.set_hooks = set_hooks
 # Register features #
 #####################
 register_functions()
+register_classes()
 
 #########
 # Setup #

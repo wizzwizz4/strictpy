@@ -3,10 +3,13 @@
 import sys
 import itertools
 import ctypes
+import types
+
+from . import singletons
 
 __all__ = ['get_target_name', 'reclass_object', 'magic_set_pointer',
            'magic_get_dict_address', 'magic_get_dict', 'magic_set_dict',
-           'magic_flush_mro_cache']
+           'magic_flush_mro_cache', 'is_strict_module']
 
 def get_target_name(depth: int=0) -> str:
     for depth in itertools.count(2 + depth):
@@ -73,3 +76,6 @@ def magic_set_dict(o: object, d: dict) -> None:
 
 def magic_flush_mro_cache() -> None:
     ctypes.PyDLL(None).PyType_Modified(ctypes.py_object(object))
+
+def is_strict_module(module: types.ModuleType) -> bool:
+    return isinstance(module.__dict__, singletons.ModuleGlobals)
