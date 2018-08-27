@@ -18,13 +18,15 @@ def register() -> None:
     singletons.set_hooks[types.FunctionType] = function_hook
 
 class Prototype:
-    __slots__ = ('margs', 'oargs', 'mkwargs', 'okwargs', 'args', 'kwargs')
-    margs: typing.Mapping[str, typing.Tuple[type]]
-    oargs: typing.Mapping[str, typing.Tuple[type, object]]
+    __slots__ = ('margs', 'oargs', 'mkwargs', 'okwargs', 'args', 'kwargs',
+                 'ret')
+    margs: typing.Sequence[typing.Tuple[str, typing.Tuple[type]]]
+    oargs: typing.Sequence[typing.Tuple[str, typing.Tuple[type, object]]]
     mkwargs: typing.Mapping[str, typing.Tuple[type]]
     okwargs: typing.Mapping[str, typing.Tuple[type, object]]
-    args: bool
-    kwargs: bool
+    args: bool    # Doesn't do typechecking on this...
+    kwargs: bool  # Or this.
+    ret: typing.Tuple[type]
 
     def __init__(self, f: types.FunctionType):
         c = f.__code__
@@ -35,11 +37,11 @@ class Prototype:
             noargs = len(f.__defaults__)
         except TypeError:
             noargs = 0
-        self.margs = {k: (f.__annotations__[k],)
-                      for k in argnames[:-noargs]}
+        self.margs = tuple((k, (f.__annotations__[k],))
+                           for k in argnames[:-noargs])
         if noargs:
-            self.oargs = {k: (f.__annotations__[k], f.__defaults__[k])
-                          for k in argnames[-noargs:]}
+            self.oargs = tuple((k, (f.__annotations__[k], f.__defaults__[i]))
+                               for i, k in enumerate(argnames[-noargs:]))
         else:
             self.oargs = {}
 
@@ -50,13 +52,24 @@ class Prototype:
         self.mkwargs = {k: (f.__annotations__[k],)
                         for k in kwargnames[:-nokwargs]}
         if nokwargs:
-            self.okwargs = {k: (f.__annotations__[k], f.__defaults__[k])
-                            for k in kwargnames[-nokwargs:]}
+            self.okwargs = {k: (f.__annotations__[k], f.__defaults__[i])
+                            for i, k in enumerate(kwargnames[-nokwargs:])}
         else:
             self.okwargs = {}
 
         self.args = c.co_flags | 0x0004 > 0
         self.kwargs = c.co_flags | 0x0008 > 0
+        self.ret = f.__annotations__['return'],
+
+        # Type checking for defaults
+        for name, (type_, default) in self.oargs:
+            if not isinstance(default, type_):
+                raise ValueError(f"Default value for {name!r} is of type "
+                                 f"{type(default)!r}, not {type_!r}")
+        for name, (type_, default) in self.okwargs.items():
+            if not isinstance(default, type_):
+                raise ValueError(f"Default value for {name!r} is of type "
+                                 f"{type(default)!r}, not {type_!r}")
 
     def __eq__(self, other):
         return (self.margs == other.margs
@@ -69,7 +82,9 @@ class Prototype:
 class FunctionDescriptor:
     def __init__(self, f):
         if not all(name in f.__annotations__ for name in
-                   f.__code__.co_varnames + ("return",)):
+                   f.__code__.co_varnames[:f.__code__.co_argcount
+                                           + f.__code__.co_kwonlyargcount]
+                   + ("return",)):
             raise ValueError("Your function needs annotations!")
 
         # Set prototype from f.__code__.co_varnames and __annotations__
@@ -101,11 +116,41 @@ class FunctionDescriptor:
     def __get__(self, instance, type_):
         @functools.wraps(self.function)
         def f(*args, **kwargs):
-            mandatory = True
             for i, arg in enumerate(args):
-                if mandatory:
-                    pass
-        return self.function
+                if i < len(self.prototype.margs):
+                    if not isinstance(arg, self.prototype.margs[i][1][0]):
+                        raise ValueError(f"Mandatory argument #{i} "
+                                         f"is of type {type(arg)!r}, not "
+                                         f"{self.prototype.margs[i][1][0]!r}")
+                else:
+                    i -= len(self.prototype.margs)
+                    if i >= (len(self.prototype.oargs)):
+                        break
+                    if not isinstance(arg, self.prototype.oargs[i][1][0]):
+                        raise ValueError(f"Optional argument #{i} "
+                                         f"is of type {type(arg)!r}, not "
+                                         f"{self.prototype.oargs[i][1][0]!r}")
+
+            for name, kwarg in kwargs.items():
+                if name in self.prototype.mkwargs:
+                    if not isinstance(kwarg, self.prototype.mkwargs[name][0]):
+                        raise ValueError(f"Mandatory argument {name!r} "
+                                         f"is of type {type(arg)!r}, not "
+                                         f"{self.prototype.mkwargs[name][0]!r}"
+                                         )
+                elif name in self.prototype.okwargs:
+                    if not isinstance(kwarg, self.prototype.okwargs[name][0]):
+                        raise ValueError(f"Optional argument {name!r} "
+                                         f"is of type {type(arg)!r}, not "
+                                         f"{self.prototype.okwargs[name][0]!r}"
+                                         )
+
+            ret = self.function(*args, **kwargs)
+            if not isinstance(ret, self.prototype.ret[0]):
+                raise ValueError(f"Return value is of type {type(ret)!r}, not "
+                                 f"{self.prototype.ret[0]!r}")
+            return ret
+        return f
 
     def __set__(self, instance, value):
         if self.prototype != Prototype(value):
