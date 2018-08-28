@@ -13,6 +13,8 @@ import builtins
 from builtins import __build_class__
 import sys
 import re
+import typing
+import itertools
 
 from .utils import get_target_name, is_strict_module
 
@@ -30,6 +32,7 @@ def build_class(func, name, *bases, metaclass=None, **kwds):
         return __build_class__(func, name, *bases, metaclass=metaclass, **kwds)
 
 class PrivateProtectedClass:
+    __slots__ = ()
     def __getattribute__(self, key):
         if key[0] == '_':
             print("TODO: Special behaviour here.")
@@ -38,3 +41,8 @@ class PrivateProtectedClass:
             # TODO: Detect whether private or protected visibility applies.
             # TODO: Do the same for __setattribute__.
         return super().__getattribute__(key)
+
+def climb_super_chain(mro: typing.Sequence[type], name: str, depth: int=0):
+    for depth in itertools.count(1 + depth):
+        frame = sys._getframe(depth)
+        name = frame.f_code.co_name
