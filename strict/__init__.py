@@ -36,8 +36,8 @@ class ModuleGlobals(dict):
 
         if key not in __strict__ or __strict__[key] & Attribute.UNOPTIMISABLE:
             # Lazy evaluation!
-            warnings.warn("strict (type checking etc.) didn't run for {key} "
-                          "when it was first set",
+            warnings.warn(f"strict (type checking etc.) didn't run for {key} "
+                          f"when it was first set",
                           category=RuntimeWarning, stacklevel=2)
             value = super().__getitem__(key)
             super().__delitem__(key)

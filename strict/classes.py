@@ -74,7 +74,7 @@ def block_invalid_pripro_access(self: PrivateProtectedClass,
                                      f"object.__getattribute__(obj, key) or "
                                      f"unittest.mock.patch('builtins.super'); "
                                      f"the latter's better because it'll still"
-                                     f"runs other __[gs]etattribute__s. Also, "
+                                     f" run other __[gs]etattribute__s. Also, "
                                      f"press Ctrl+Alt+M and type "
                                      f"strict.classes.")
             if cls.__name__ != match['class']:
