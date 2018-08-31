@@ -26,7 +26,7 @@ def register():
 
 def build_class(func, name, *bases, metaclass=None, **kwds):
     if is_strict_module(sys.modules[func.__module__]):
-        if bases[-1] == object:
+        if bases and bases[-1] == object:
             bases = bases[-1:] + (PrivateProtectedClass, object)
         else:
             bases += PrivateProtectedClass,
@@ -43,9 +43,9 @@ class PrivateProtectedClass:
         block_invalid_pripro_access(self, key, '__getattribute__')
         return super().__getattribute__(key)
 
-    def __setattribute(self, key, value):
-        block_invalid_pripro_access(self, key, '__getattribute__')
-        super().__setattribute__(key, value)
+    def __setattr__(self, key, value):
+        block_invalid_pripro_access(self, key, '__setattr__')
+        super().__setattr__(key, value)
 
 def block_invalid_pripro_access(self: PrivateProtectedClass,
                                 key: str, name: str,
@@ -96,7 +96,7 @@ def climb_super_chain(mro: typing.Sequence[type], name: str,
                 break
         else:
             break
-        if name == frame.f_code.co_name:
+        if name != frame.f_code.co_name:
             break
     return frame
 
