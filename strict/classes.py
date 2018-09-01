@@ -50,7 +50,7 @@ class PrivateProtectedClass:
 def block_invalid_pripro_access(self: PrivateProtectedClass,
                                 key: str, name: str,
                                 depth: int=0) -> None:
-    if key[0] == '_':
+    if key[0] == '_' and not key[:2] == '__' == key[-2:]:
         mro = type(type(self)).mro(type(self))
         frame = climb_super_chain(
             mro,
