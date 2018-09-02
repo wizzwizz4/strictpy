@@ -2,6 +2,7 @@
 
 import types
 from typing import _tp_cache
+import collections.abc
 
 __all__ = [
     # Super-special typing primitives.
@@ -10,9 +11,18 @@ __all__ = [
     'ClassVar',
     'Optional',
     'Tuple',
-    'Type',
-    'TypeVar',
-    'Union'
+    'Union',
+
+    # Not-so-Abstract Base Types.
+    # TODO: Add the rest to this list.
+    'BigInt',
+    'ByteString',
+    'Byte',
+    'Iterable',
+    'Set',
+    'Sequence',
+    'String',
+    'NamedTuple'
 ]
 
 class _Immutable:
@@ -123,6 +133,10 @@ class _DifferentiatedTuple(type):
         # TODO: Make generic.
         return issubclass(cls, tuple)
 
+class Type:
+    """Currently useless."""
+    pass
+
 class Union:
     __slots__ = ('_types')
     
@@ -183,3 +197,43 @@ class Union:
 
     def __subclasscheck__(self, cls):
         return issubclass(cls, self._types)
+
+# Not-so-Abstract Base Types
+# Putting this here as a note for future me; feel free to remove, future me:
+##    'BigInt',
+##    'ByteString',
+##    'Byte',
+##    'Iterable',
+##    'Set',
+##    'Sequence',
+##    'String',
+##    'NamedTuple'
+
+class BigInt(int):
+    # TODO: Make generic.
+    pass
+
+class ByteString(bytes):
+    """Like bytes, except items are Bytes."""
+    # TODO: Make generic.
+    def __getitem__(self, i):
+        v = super().__getitem__(i)
+        if isinstance(v, int):
+            return Byte(v)
+        return ByteString(v)
+
+    def __iter__(self):
+        return map(Byte, super().__iter__())
+
+    # TODO: Addition still needs to be a ByteString.
+
+class Byte(int):
+    # TODO: Make generic.
+    def __new__(cls, value):
+        self = super().__new__(cls, value)
+        if self > 255 or self < -128:
+            raise ValueError("Byte out of range.")
+        return self
+
+    # TODO: Handle -1 == 255 etc.
+    # TODO: Addition etc. needs to still be a Byte.

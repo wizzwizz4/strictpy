@@ -15,4 +15,5 @@ class TestTyping(unittest.TestCase):
                     self.assertTrue(all(isinstance(t(), union) for t in ts))
             
 if __name__ == '__main__':
-    unittest.main()
+##    unittest.main()
+    pass
