@@ -1,6 +1,7 @@
 """Strictpy extra types and ABCs."""
 
 import types
+import typing
 from typing import _tp_cache
 import collections.abc
 
@@ -18,7 +19,6 @@ __all__ = [
     'BigInt',
     'ByteString',
     'Byte',
-    'Iterable',
     'Set',
     'Sequence',
     'String',
@@ -105,7 +105,7 @@ class Tuple(tuple):
 class _DifferentiatedTuple(type):
     # Subclasses of type can't have __slots__.
 
-    _types: 'Sequence[type]'
+    _types: typing.ClassVar['Sequence[type]']
 
     def __new__(cls, types_):
         return super().__new__(
@@ -203,7 +203,6 @@ class Union:
 ##    'BigInt',
 ##    'ByteString',
 ##    'Byte',
-##    'Iterable',
 ##    'Set',
 ##    'Sequence',
 ##    'String',
@@ -211,11 +210,15 @@ class Union:
 
 class BigInt(int):
     # TODO: Make generic.
+    __slots__ = ()
+
     pass
 
 class ByteString(bytes):
     """Like bytes, except items are Bytes."""
     # TODO: Make generic.
+    __slots__ = ()
+
     def __getitem__(self, i):
         v = super().__getitem__(i)
         if isinstance(v, int):
@@ -229,6 +232,8 @@ class ByteString(bytes):
 
 class Byte(int):
     # TODO: Make generic.
+    __slots__ = ()
+
     def __new__(cls, value):
         self = super().__new__(cls, value)
         if self > 255 or self < -128:
@@ -237,3 +242,14 @@ class Byte(int):
 
     # TODO: Handle -1 == 255 etc.
     # TODO: Addition etc. needs to still be a Byte.
+
+class Set(set):
+    __slots__ = ()
+
+    _type: typing.ClassVar[type]
+
+    def __new__(self, iterable=None):
+        if not hasattr(self.__class__, '_type'):
+            if iterable is None:
+                return set.__new__(set)
+            return set.__new__(set, iterable)
