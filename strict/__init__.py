@@ -29,7 +29,6 @@ class ModuleGlobals(dict):
         raise RuntimeError("This is magic; it shouldn't be instantiated!")
     
     def __getitem__(self, key):
-        print("__getitem__", key)
         module = sys.modules[super().__getitem__('__name__')]
         __strict__ = super().__getitem__('__strict__')
         item = super().__getitem__(key)
@@ -50,7 +49,6 @@ class ModuleGlobals(dict):
         return item
 
     def __setitem__(self, key, value):
-        print("__setitem__", key, value)
         module = sys.modules[super().__getitem__('__name__')]
         __strict__ = super().__getitem__('__strict__')
         # Stop import strict from actually importing strict.
@@ -87,7 +85,6 @@ class ModuleGlobals(dict):
         __strict__[key] = Attribute.NONE
 
     def __delitem__(self, key):
-        print("__delitem__", key)
         module = sys.modules[super().__getitem__('__name__')]
         item = super().__getitem__(key)
         if hasattr(item, 'delete'):

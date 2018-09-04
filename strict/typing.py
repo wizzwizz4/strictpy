@@ -93,19 +93,21 @@ class Tuple(tuple):
             return tuple.__new__(tuple, iterable)
         self = super().__new__(cls, iterable)
         if not isinstance(self, cls):
-            raise ValueError("The iterable doesn't have the right types. "
-                             "Tuple[A, B] means a tuple of form (A(), B()). "
-                             "You probably meant to use Sequence, if this is "
-                             "an unexpected error.")
+            raise TypeError("The iterable doesn't have the right types. "
+                            "Tuple[A, B] means a tuple of form (A(), B()). "
+                            "You probably meant to use Sequence, if this is "
+                            "an unexpected error.")
         return self
 
     def __class_getitem__(cls, types_):
+        if hasattr(cls, '_types'):
+            raise ValueError("Can't differentiate a differentiated Tuple.")
         return _DifferentiatedTuple(types_)
 
 class _DifferentiatedTuple(type):
     # Subclasses of type can't have __slots__.
 
-    _types: typing.ClassVar['Sequence[type]']
+    _types: 'Sequence[type]'
 
     def __new__(cls, types_):
         return super().__new__(
@@ -244,12 +246,56 @@ class Byte(int):
     # TODO: Addition etc. needs to still be a Byte.
 
 class Set(set):
+    # TODO: Make generic.
+    __slots__ = ()
+
+    def __new__(cls, iterable=None):
+        if not hasattr(cls, '_type'):
+            if iterable is None:
+                return set.__new__(set)
+            return set.__new__(set, iterable)
+        if iterable is None:
+            return super().__new__(cls)
+        self = super().__new__(cls, iterable)
+        if not all(isinstance(x, cls._type)
+                   for x in self):
+            raise ValueError(f"The iterable doesn't have the right type. "
+                             f"It should be {cls._type!r}.")
+
+    def __class_getitem__(cls, type_):
+        if hasattr(cls, '_type'):
+            raise ValueError("Can't differentiate a differentiated Set.")
+        return _DifferentiatedSet(type_)
+
+    def add(self, value):
+        cls = type(self)
+        if not all(isinstance(x, cls._type)):
+            raise TypeError(f"Invalid type; expected {cls._type!r}, "
+                            f"got {type(x)!r}.")
+        super().add(value)
+
+    # TODO: Add more.
+
+class _DifferentiatedSet(type):
+    _type: type
+
+    def __new__(self, type_):
+        return super().__new__(
+            cls,
+            f"Set[{type_!r}]",
+            (Tuple,),
+            {}
+        )
+
+    def __init__(self, type_):
+        self._type = type_
+
+    # TODO: Add instance check.
+
+class Sequence:
     __slots__ = ()
 
     _type: typing.ClassVar[type]
 
-    def __new__(self, iterable=None):
-        if not hasattr(self.__class__, '_type'):
-            if iterable is None:
-                return set.__new__(set)
-            return set.__new__(set, iterable)
+    def __new__(cls, value):
+        pass
